@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ativar Crachá · SENAI Patrimônio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <div class="flex items-center gap-3 border-b border-slate-700/80 pb-5">
+            <div class="h-10 w-10 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-md">
+                <span class="material-symbols-rounded text-2xl">contactless</span>
+            </div>
+            <div>
+                <h1 class="text-lg font-black text-white tracking-tight">Ativação de Crachá</h1>
+                <p class="text-xs text-slate-400">SENAI · Controle de Patrimônio</p>
+            </div>
+        </div>
+
+        <!-- Instruções -->
+        <div class="bg-slate-900/60 border border-slate-700/60 rounded-2xl p-4 space-y-2 text-xs text-slate-300">
+            <p class="font-bold text-white flex items-center gap-1.5">
+                <span class="material-symbols-rounded text-sm text-red-500">info</span> Como Funciona:
+            </p>
+            <p>1. Aproxime seu crachá físico no leitor RFID na bancada.</p>
+            <p>2. Selecione seu nome na lista abaixo.</p>
+            <p>3. Clique em <strong>Vincular Crachá</strong> para ativar.</p>
+        </div>
+
+        <!-- Último crachá detectado -->
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl p-4 flex items-center justify-between">
+            <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Crachá Detectado no Leitor:</span>
+                <span id="uid-detectado" class="text-base font-black text-amber-400 font-mono">Aguardando leitura...</span>
+            </div>
+            <button onclick="buscarUltimoCracha()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors" title="Atualizar">
+                <span class="material-symbols-rounded text-lg">refresh</span>
+            </button>
+        </div>
+
+        <!-- Seleção de Professor -->
+        <div>
+            <label class="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2">Selecione seu Nome (Docente):</label>
+            <select id="select-prof" class="w-full bg-slate-900 border border-slate-600 text-white rounded-xl px-4 py-3 text-sm outline-none focus:border-red-500">
+                <option value="">Carregando professores...</option>
+            </select>
+        </div>
+
+        <button id="btn-ativar" onclick="ativar()" class="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2">
+            <span class="material-symbols-rounded text-lg">link</span> Vincular Meu Crachá
+        </button>
+
+        <p id="msg-retorno" class="text-xs text-center font-bold hidden"></p>
+
+        <div class="text-center pt-2">
+            <a href="/" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Voltar para o Painel</a>
+        </div>
+    </div>
+
+    <script>
+        const host = window.location.hostname || 'localhost';
+        const API = `http://${host}:5000`;
+        let ultimoUid = null;
+
+        async function carregarProfessores() {
+            try {
+                const res = await fetch(`${API}/api/professores`);
+                const profs = await res.json();
+                const sel = document.getElementById('select-prof');
+                if (!profs || profs.length === 0) {
+                    sel.innerHTML = '<option value="">Nenhum professor pré-cadastrado</option>';
+                    return;
+                }
+                sel.innerHTML = '<option value="">Selecione seu nome...</option>' +
+                    profs.map(p => `<option value="${p.id}">${p.nome} (${p.status_cracha === 'Ativo' ? 'Crachá já Ativo' : 'Aguardando Ativação'})</option>`).join('');
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        async function buscarUltimoCracha() {
+            try {
+                const res = await fetch(`${API}/api/crachas/recentes`);
+                const crachas = await res.json();
+                const pendente = crachas.find(c => c.status === 'Pendente');
+                const el = document.getElementById('uid-detectado');
+                if (pendente) {
+                    ultimoUid = pendente.tag_uid;
+                    el.innerText = pendente.tag_uid;
+                    el.className = 'text-base font-black text-emerald-400 font-mono';
+                } else {
+                    ultimoUid = null;
+                    el.innerText = 'Aproxime no leitor...';
+                    el.className = 'text-sm font-semibold text-slate-500';
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        async function ativar() {
+            const profId = document.getElementById('select-prof').value;
+            const msg = document.getElementById('msg-retorno');
+            const btn = document.getElementById('btn-ativar');
+
+            if (!profId) {
+                alert('Selecione seu nome na lista.');
+                return;
+            }
+            if (!ultimoUid) {
+                alert('Aproxime seu crachá físico no leitor RFID primeiro!');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Vinculando...';
+
+            try {
+                const res = await fetch(`${API}/api/professores/${profId}/vincular-cracha`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ tag_uid: ultimoUid })
+                });
+                const data = await res.json();
+
+                msg.classList.remove('hidden', 'text-rose-400', 'text-emerald-400');
+                if (data.erro) {
+                    msg.classList.add('text-rose-400');
+                    msg.innerText = data.erro;
+                } else {
+                    msg.classList.add('text-emerald-400');
+                    msg.innerHTML = '✅ ' + data.mensagem + '<br>Agora seu crachá já inicia e encerra turnos!';
+                    buscarUltimoCracha();
+                    carregarProfessores();
+                }
+            } catch(e) {
+                alert('Falha de conexão com o servidor.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="material-symbols-rounded text-lg">link</span> Vincular Meu Crachá';
+            }
+        }
+
+        carregarProfessores();
+        buscarUltimoCracha();
+        setInterval(buscarUltimoCracha, 2500);
+    </script>
+</body>
+</html>

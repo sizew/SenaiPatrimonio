@@ -1,0 +1,44 @@
+# ============================================================
+# SENAI PATRIMÔNIO - .gitignore
+# ============================================================
+
+# Python bytecode e caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Banco de Dados local (gerado dinamicamente pelo seed_demo.py / app.py)
+backend/database/*.db
+*.sqlite
+*.sqlite3
+*.db
+
+# Arquivo com credenciais de Wi-Fi e IP da rede local
+# (Use esp8266/leitor_rfid/config.example.h como modelo)
+esp8266/leitor_rfid/config.h
+
+# Logs e arquivos temporários
+*.log
+*.tmp
+scratch/
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
