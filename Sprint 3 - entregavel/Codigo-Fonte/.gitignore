@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+esp8266/leitor_rfid/config.h
+
+# Local databases and runtime data
+backend/database/
+*.db
+*.sqlite
+*.sqlite3
+instance/
+*.log
+*.tmp
+
+# Arduino / PlatformIO build outputs
+.pio/
+build/
+*.elf
+*.hex
+*.bin
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
