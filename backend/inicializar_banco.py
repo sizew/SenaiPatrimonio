@@ -1,4 +1,4 @@
-"""Reinicia o banco e mantém somente a conta da Secretaria e os laboratórios padrão.
+"""Reinicia o banco e mantém somente a conta da Secretaria e a sala de informática.
 
 Este comando apaga usuários, crachás, patrimônios e históricos existentes.
 Execute apenas quando quiser começar uma instalação limpa.
@@ -11,13 +11,7 @@ from werkzeug.security import generate_password_hash
 
 
 LABORATORIOS_PADRAO = [
-    ("Lab. Informática 1", "Bloco A - Sala 101"),
-    ("Lab. Informática 2", "Bloco A - Sala 102"),
-    ("Lab. Redes", "Bloco B - Sala 201"),
-    ("Lab. Hardware", "Bloco B - Sala 202"),
-    ("Lab. Automação", "Bloco C - Sala 301"),
-    ("Lab. Eletrônica", "Bloco C - Sala 302"),
-    ("Lab. Maker / 3D", "Bloco D - Sala 401"),
+    ("Sala de Informática", "Sala de Informática"),
 ]
 
 
@@ -44,7 +38,7 @@ def inicializar_banco():
     conn.close()
     print("Banco reiniciado.")
     print("Conta: Secretaria | Professores, crachás, patrimônios e histórico: vazios.")
-    print("Laboratórios padrão: 7")
+    print("Sala inicial: Sala de Informática")
     print("Login: secretaria@senai.br | Senha: senai123")
 
 
