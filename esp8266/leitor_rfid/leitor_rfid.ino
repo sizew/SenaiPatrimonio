@@ -16,6 +16,7 @@
 // ============================================================
 #define RST_PIN  2   // D9
 #define SS_PIN   15  // D10
+#define HTTP_TIMEOUT_MS 3500
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
