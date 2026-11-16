@@ -110,7 +110,7 @@
                 const num = i.toString().padStart(2, '0');
                 const id  = `${prefixo}${num}`;
                 // Porta 5000
-                const qrContent = isPC ? `${window.location.protocol === 'https:' ? 'https:' : 'http:'}//${serverIP || 'SEU-IP-NA-REDE'}:5000/retirar/${id}` : id;
+                const qrContent = isPC ? `${window.location.protocol === 'https:' ? 'https:' : 'http:'}//${serverIP || 'SEU-IP-NA-REDE'}:5000/uso/${id}` : id;
 
                 const div = document.createElement('div');
                 div.className = 'etiqueta';
