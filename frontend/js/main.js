@@ -553,13 +553,25 @@ function cadastrarPatrimonio() {
 // ============================================================
 // SECRETARIA: HISTÓRICO DE AUDITORIA
 // ============================================================
+let carregandoHistorico = false;
+
+function formatarDataHora(valor) {
+    if (!valor) return '--';
+    const partes = String(valor).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!partes) return escapeHTML(valor);
+    return `${partes[3]}/${partes[2]}/${partes[1]} ${partes[4]}:${partes[5]}`;
+}
+
 function carregarHistorico() {
+    if (carregandoHistorico) return;
+    carregandoHistorico = true;
+
     fetch(`${API}/api/historico?limit=50`)
         .then(r => r.json())
         .then(rows => {
             const tbody = document.getElementById('tabela-historico');
             if (!rows || rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-500 py-8 text-xs">Nenhuma cautela registrada no histórico.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-500 py-8 text-xs">Nenhum uso registrado no histórico.</td></tr>';
                 return;
             }
 
@@ -572,18 +584,20 @@ function carregarHistorico() {
                     <td class="px-6 py-4 text-xs font-bold text-slate-200">${escapeHTML(r.nome_usuario)}</td>
                     <td class="px-6 py-4 text-xs text-slate-400">${escapeHTML(r.responsavel)}</td>
                     <td class="px-6 py-4 text-xs text-slate-400">${escapeHTML(r.laboratorio)}</td>
-                    <td class="px-6 py-4 text-xs text-slate-500 font-mono">${r.retirada_em ? r.retirada_em.substring(11,16) : '--'}</td>
+                    <td class="px-6 py-4 text-xs text-slate-500 font-mono">${formatarDataHora(r.retirada_em)}</td>
+                    <td class="px-6 py-4 text-xs text-slate-500 font-mono">${r.devolucao_em ? formatarDataHora(r.devolucao_em) : (r.status === 'Ativa' ? 'Em uso' : 'Não registrado')}</td>
                     <td class="px-6 py-4">
                         ${r.status === 'Ativa' ? `
                             <span class="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-rose-950/60 text-rose-400 border border-rose-800/40">Em Uso</span>
                         ` : `
-                            <span class="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">Devolvido</span>
+                            <span class="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">Uso Encerrado</span>
                         `}
                     </td>
                 </tr>
             `).join('');
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { carregandoHistorico = false; });
 }
 
 // ============================================================
@@ -632,7 +646,7 @@ function carregarLaboratorios() {
                                                 <p class="text-xs font-bold text-white">${escapeHTML(c.nome_usuario)}</p>
                                                 <p class="text-[10px] text-slate-400">${escapeHTML(c.numero_patrimonio)} · ${c.retirada_em ? c.retirada_em.substring(11,16) : ''}</p>
                                             </div>
-                                            <button onclick="devolverCautelaManual(${c.id})" class="text-[10px] text-slate-400 hover:text-rose-400 transition-colors p-1" title="Liberar PC">
+                                            <button onclick="devolverCautelaManual(${c.id})" class="text-[10px] text-slate-400 hover:text-rose-400 transition-colors p-1" title="Finalizar uso deste PC">
                                                 <span class="material-symbols-rounded text-base">close</span>
                                             </button>
                                         </div>
@@ -668,13 +682,15 @@ function carregarLaboratorios() {
 }
 
 function encerrarTurnoManual(labId) {
-    if (!confirm('Deseja encerrar este turno de aula? Todos os computadores do laboratório serão desvinculados.')) return;
+    if (!confirm('Deseja encerrar este turno? Os registros de uso ativos da sala serão finalizados.')) return;
 
     fetch(`${API}/api/laboratorios/${labId}/encerrar`, { method: 'POST' })
         .then(r => r.json())
         .then(d => {
             showToast('Turno Encerrado', d.mensagem, 'sucesso');
             carregarLaboratorios();
+            carregarHistorico();
+            if (usuarioTipo === 'secretaria') carregarStats();
         })
         .catch(() => showToast('Erro', 'Falha ao encerrar turno.', 'erro'));
 }
@@ -683,10 +699,12 @@ function devolverCautelaManual(cautelaId) {
     fetch(`${API}/api/cautelas/${cautelaId}/devolver`, { method: 'POST' })
         .then(r => r.json())
         .then(d => {
-            showToast('PC Liberado', d.mensagem, 'sucesso');
+            showToast('Uso Finalizado', d.mensagem, 'sucesso');
             carregarLaboratorios();
+            carregarHistorico();
+            if (usuarioTipo === 'secretaria') carregarStats();
         })
-        .catch(() => showToast('Erro', 'Falha ao devolver PC.', 'erro'));
+        .catch(() => showToast('Erro', 'Falha ao finalizar o uso do PC.', 'erro'));
 }
 
 // ============================================================
@@ -701,6 +719,7 @@ setInterval(() => {
         carregarLaboratorios();
         carregarProfessores();
         carregarStats();
+        carregarHistorico();
     }
 }, 2500);
 
