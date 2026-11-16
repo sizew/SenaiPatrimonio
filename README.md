@@ -1,110 +1,104 @@
 # SENAI Patrimônio
 
-Sistema web para controle de patrimônio e uso de equipamentos em laboratórios. Integra painel da Secretaria, abertura de turno por crachá RFID e retirada de equipamentos pelo QR Code.
+Sistema web integrado a RFID para registrar o uso dos computadores da sala de informática. O professor inicia ou encerra o turno com o crachá; o aluno lê o QR Code do computador e informa seu nome. O painel associa aluno, computador, sala, professor e horário para acompanhamento e histórico.
 
-## Apresentação ao vivo
+## Escopo desta versão
 
-### Antes da reunião
+- Piloto direcionado a uma sala de informática.
+- Registro do professor responsável pelo turno via RFID.
+- Registro de quem está usando cada computador via QR Code.
+- Acompanhamento do uso atual e consulta ao histórico pela Secretaria.
+- O QR pede o nome digitado pelo aluno; essa versão não autentica a identidade do aluno.
+- Não controla fechaduras nem registra automaticamente todas as pessoas que entram na sala.
+- Empréstimo de equipamento para fora da sala, chamados de manutenção, limpeza e app com login individual ficam fora do escopo desta versão.
 
-1. No computador servidor, conecte o leitor ESP8266 e os celulares à mesma rede Wi-Fi. Para o QR funcionar no celular, use o IP de rede do computador, não `localhost`.
-2. Confira o IP do computador com `ipconfig`. Atualize `SERVER_URL` em `esp8266/leitor_rfid/config.h` para `http://<IP_DO_COMPUTADOR>:5000/api/rfid/leitura` e confira o `LAB_ID`.
-3. Prepare a base inicial:
+## Requisitos
 
-   ```powershell
-   python backend/inicializar_banco.py
-   ```
+- Python 3.9 ou superior
+- Flask (`python -m pip install Flask`)
+- Arduino IDE e biblioteca MFRC522 para gravar o ESP8266, se for demonstrar o RFID físico
+- Computador servidor, ESP8266 e celular conectados à mesma rede local
 
-   **Este comando apaga os dados atuais** e recria a conta da Secretaria e sete laboratórios padrão. Professores, crachás, patrimônios e histórico começam vazios.
+## Preparação e início
 
-4. Instale as dependências do servidor, se necessário:
+1. Abra PowerShell na pasta do projeto e instale o Flask, se necessário:
 
    ```powershell
    python -m pip install Flask
    ```
 
-5. Inicie o servidor:
+2. Para iniciar uma base limpa, execute:
+
+   ```powershell
+   python backend/inicializar_banco.py
+   ```
+
+   **Atenção:** esse comando apaga os usuários, crachás, equipamentos e históricos existentes e recria a conta da Secretaria e a sala de informática. Não execute se quiser preservar dados cadastrados.
+
+3. Inicie o servidor:
 
    ```powershell
    python backend/app.py
    ```
 
-6. Se o Firewall do Windows perguntar, permita conexões na rede privada para que os celulares e o ESP8266 acessem a porta 5000.
+4. No computador servidor, abra `http://localhost:5000`. Para celulares na rede, use `http://<IP_DO_SERVIDOR>:5000`.
 
-### Entrar no painel
+## Conta inicial da Secretaria
 
-No computador, abra `http://localhost:5000`. Na Secretaria, entre com:
+- E-mail: `secretaria@senai.br`
+- Senha inicial: `senai123`
 
-- **E-mail:** `secretaria@senai.br`
-- **Senha inicial:** `senai123`
+Altere a senha inicial antes de inserir dados reais.
 
-Use **Alterar senha** no cabeçalho antes de cadastrar informações reais.
+## Preparação do ESP8266
 
-### Roteiro sugerido
-
-1. **Cadastre um professor:** em *Professores Cadastrados*, clique em **Pré-cadastrar** e informe nome e e-mail.
-2. **Cadastre um equipamento:** em *Cadastrar Patrimônio*, informe identificador, categoria, descrição e laboratório. Para seguir este roteiro, use `PC-01`.
-3. **Vincule um crachá:** aproxime um crachá ainda não cadastrado do leitor. Quando aparecer na fila, use **Vincular** na linha do professor.
-4. **Abra o turno:** aproxime novamente o crachá vinculado. O laboratório ficará em uso.
-5. **Gere o QR:** no painel, abra **QR dos PCs**. O gerador aproveita o endereço usado para abrir a página. Se estiver usando `localhost`, informe no campo o IP de rede do computador servidor. Imprima a etiqueta de `PC-01`.
-6. **Registre um aluno:** leia o QR com um celular conectado à mesma rede, informe o nome e confirme. A cautela aparecerá no painel.
-7. **Mostre os bloqueios:** tente registrar outra pessoa no mesmo PC e o mesmo nome em outro computador; as duas tentativas devem ser recusadas.
-8. **Encerre o turno:** aproxime novamente o crachá. As cautelas ativas serão devolvidas e aparecerão no histórico.
-
-Para encerrar o servidor, volte ao terminal e pressione `Ctrl+C`.
-
-## Requisitos e execução
-
-- Python 3.9 ou superior
-- Flask (`python -m pip install Flask`)
-- Arduino IDE e biblioteca MFRC522, para gravar o firmware no ESP8266
-
-O servidor atende em `http://localhost:5000` e escuta também na rede local. Para abrir o painel em outro computador, use `http://<IP_DO_SERVIDOR>:5000`.
-
-## Configuração do ESP8266
-
-Crie `esp8266/leitor_rfid/config.h` localmente com os dados da rede:
+Crie localmente `esp8266/leitor_rfid/config.h` com os dados da rede e o endereço do servidor. O arquivo é ignorado pelo Git; não compartilhe credenciais.
 
 ```cpp
 const char* WIFI_SSID     = "NOME_DO_SEU_WIFI";
 const char* WIFI_PASSWORD = "SENHA_DO_SEU_WIFI";
-const char* SERVER_URL    = "http://<IP_DO_COMPUTADOR>:5000/api/rfid/leitura";
+const char* SERVER_URL    = "http://<IP_DO_SERVIDOR>:5000/api/rfid/leitura";
 const int LAB_ID          = 1;
 ```
 
-Esse arquivo contém credenciais e é ignorado pelo Git. Conecte o MFRC522 ao WeMos D1 R1:
+No Arduino IDE, selecione **LOLIN(WEMOS) D1 R1**. Ligue o MFRC522 em 3.3V (nunca 5V): RST→D9, SDA/SS→D10, MOSI→D11, MISO→D12, SCK→D13, VCC→3.3V e GND→GND.
 
-| MFRC522 | WeMos D1 R1 |
-|---|---|
-| RST | D9 (GPIO 2) |
-| SDA / SS | D10 (GPIO 15) |
-| MOSI | D11 (GPIO 13) |
-| MISO | D12 (GPIO 12) |
-| SCK | D13 (GPIO 14) |
-| VCC | 3.3V — nunca use 5V |
-| GND | GND |
+## Roteiro do fluxo principal
 
-Selecione **LOLIN(WEMOS) D1 R1** na Arduino IDE e grave `leitor_rfid.ino`.
+1. Entre no painel como Secretaria.
+2. Cadastre o professor e o computador (por exemplo, `PC-01`) na sala de informática.
+3. Vincule o crachá do professor.
+4. Grave e conecte o ESP8266 ao servidor. A leitura do crachá inicia o turno.
+5. Abra **QR dos PCs** e gere/imprima as etiquetas dos computadores cadastrados. Se abrir o gerador por `localhost`, informe o IP do servidor para os celulares.
+6. No celular conectado à mesma rede, leia o QR do computador em uso e informe o nome do aluno.
+7. Confira no painel o aluno, computador, sala, professor responsável e início do uso.
+8. Leia novamente o crachá para encerrar o turno; os registros ativos são finalizados e passam ao histórico.
 
-## O que o sistema faz
+Para encerrar o servidor, use `Ctrl+C` no terminal.
 
-- Só permite retirada de equipamento previamente cadastrado.
-- Só permite retirada durante um turno aberto no laboratório associado ao equipamento.
-- Impede que um computador ou aluno tenha mais de uma cautela ativa.
-- Encerra as cautelas do laboratório quando o professor fecha o turno.
-- Exige sessão autenticada da Secretaria para as operações administrativas. As senhas são armazenadas com hash.
+## Regras do sistema
 
-O registro por QR e a rota de leitura do ESP8266 são acessíveis na rede local para atender aos fluxos de aluno e hardware. Não exponha o servidor diretamente à internet. A organização deve definir aviso de privacidade, base legal e prazo de retenção dos dados antes de usar informações pessoais reais.
+- Só computador cadastrado e associado à sala pode receber registro de uso.
+- O turno da sala deve estar ativo para registrar um computador em uso.
+- Cada computador só pode ter um usuário registrado ao mesmo tempo.
+- Cada nome de aluno só pode estar associado a um computador em uso ao mesmo tempo.
+- O encerramento do turno finaliza os registros ativos daquela sala.
+- O histórico exibe o início e o encerramento de cada registro; a tela da Secretaria atualiza automaticamente durante a sessão.
+- Operações administrativas exigem sessão da Secretaria; senhas são armazenadas com hash.
+
+## Privacidade e rede
+
+O nome do aluno é digitado no formulário e não é autenticado nesta versão. Use apenas dados de teste durante demonstrações públicas. A unidade deve definir aviso de privacidade, base legal, controle de acesso e prazo de retenção antes de usar dados pessoais reais. O serviço foi preparado para rede local; não exponha o servidor diretamente à internet.
 
 ## Estrutura
 
 ```text
 backend/app.py                     API Flask e interface servida pelo backend
-backend/inicializar_banco.py       Reinicia a base com Secretaria e laboratórios padrão
-backend/database/patrimonio.db     Banco local SQLite, ignorado pelo Git
-frontend/                          Painel, ativação de crachás e gerador de QR
+backend/inicializar_banco.py       Reinicializa a base de demonstração
+frontend/                          Painel, fluxo de uso e gerador de QR
 esp8266/leitor_rfid/leitor_rfid.ino Firmware do leitor RFID
 ```
 
-## Licença
+## Repositório
 
-Projeto educacional e institucional do SENAI-SP.
+Código-fonte: [github.com/sizew/SenaiPatrimonio](https://github.com/sizew/SenaiPatrimonio)
