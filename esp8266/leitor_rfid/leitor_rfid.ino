@@ -119,7 +119,7 @@ void loop() {
         if (resposta.indexOf("\"aberto\"") >= 0) {
             Serial.println(F(">>> SUCESSO: TURNO DE AULA INICIADO!"));
         } else if (resposta.indexOf("\"encerrado\"") >= 0) {
-            Serial.println(F(">>> SUCESSO: TURNO ENCERRADO / PATRIMONIOS LIBERADOS!"));
+            Serial.println(F(">>> SUCESSO: TURNO ENCERRADO / REGISTROS DE USO FINALIZADOS!"));
         } else if (resposta.indexOf("\"pendente\"") >= 0) {
             Serial.println(F(">>> CRACHA DETECTADO! Aguardando ativacao pela secretaria."));
         } else if (resposta.indexOf("\"negado\"") >= 0) {
