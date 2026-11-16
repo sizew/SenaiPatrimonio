@@ -1,14 +1,37 @@
 import sqlite3
 import os
+import hmac
+import re
+from html import escape
+from functools import wraps
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+from flask import Flask, request, jsonify, send_from_directory, session, redirect
+from werkzeug.security import generate_password_hash, check_password_hash
 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
 DB_FILE = os.path.join(os.path.dirname(__file__), 'database', 'patrimonio.db')
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
-CORS(app)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(32)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
+
+
+def secretaria_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if session.get('usuario_tipo') != 'secretaria':
+            return jsonify({"erro": "Acesso restrito à Secretaria."}), 401
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def login_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not session.get('usuario_id'):
+            return jsonify({"erro": "Faça login para continuar."}), 401
+        return func(*args, **kwargs)
+    return wrapper
 
 # ============================================================
 # BANCO DE DADOS
@@ -109,7 +132,7 @@ def init_db():
         cursor.execute("""
             INSERT INTO usuarios (nome, email, senha, tipo)
             VALUES (?, ?, ?, ?)
-        """, ('Secretaria SENAI', 'secretaria@senai.br', 'senai123', 'secretaria'))
+        """, ('Secretaria SENAI', 'secretaria@senai.br', generate_password_hash('senai123'), 'secretaria'))
 
     # Seed inicial: Laboratórios padrão
     cursor.execute("SELECT COUNT(*) as total FROM laboratorios")
@@ -137,6 +160,8 @@ def serve_index():
 
 @app.route('/ativar')
 def serve_ativar():
+    if session.get('usuario_tipo') != 'secretaria':
+        return redirect('/')
     return send_from_directory(app.static_folder, 'ativar.html')
 
 @app.route('/qr')
@@ -152,6 +177,8 @@ def serve_etiquetas():
 @app.route('/retirar/<numero_patrimonio>')
 def pagina_retirada(numero_patrimonio):
     numero = numero_patrimonio.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9_-]{1,32}", numero):
+        return "Identificador de patrimônio inválido.", 400
     conn = get_db()
     cursor = conn.cursor()
 
@@ -200,12 +227,18 @@ def pagina_retirada(numero_patrimonio):
 
     conn.close()
 
+    numero_html = escape(numero)
+    descricao_html = escape(descricao or '')
+    lab_nome_html = escape(lab_nome or '')
+    responsavel_html = escape(responsavel or '')
+    em_uso_por_html = escape(em_uso_por or '')
+
     estado_html = {
         "nao_encontrado": f"""
             <div class="status-box status-erro">
                 <span class="material-symbols-rounded icon-lg">sentiment_dissatisfied</span>
                 <h2>PC Não Encontrado</h2>
-                <p>O equipamento <strong>{numero}</strong> não está cadastrado no sistema.<br>Verifique a etiqueta ou contate a secretaria.</p>
+                <p>O equipamento <strong>{numero_html}</strong> não está cadastrado no sistema.<br>Verifique a etiqueta ou contate a secretaria.</p>
             </div>""",
         "sem_turno": f"""
             <div class="status-box status-aviso">
@@ -217,7 +250,7 @@ def pagina_retirada(numero_patrimonio):
             <div class="status-box status-erro">
                 <span class="material-symbols-rounded icon-lg">person_off</span>
                 <h2>PC em Uso</h2>
-                <p>Este computador já está vinculado a <strong>{em_uso_por}</strong>.<br>Por favor, escolha outro disponível.</p>
+                <p>Este computador já está vinculado a <strong>{em_uso_por_html}</strong>.<br>Por favor, escolha outro disponível.</p>
             </div>""",
         "disponivel": f"""
             <div class="status-box status-ok">
@@ -240,7 +273,7 @@ def pagina_retirada(numero_patrimonio):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>{numero} · SENAI Patrimônio</title>
+    <title>{numero_html} · SENAI Patrimônio</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
@@ -364,11 +397,11 @@ def pagina_retirada(numero_patrimonio):
             <div class="pc-badge">
                 <span class="material-symbols-rounded icon">computer</span>
                 <div>
-                    <div class="pc-num">{numero}</div>
-                    <div class="pc-desc">{descricao}</div>
+                    <div class="pc-num">{numero_html}</div>
+                    <div class="pc-desc">{descricao_html}</div>
                 </div>
             </div>
-            {f'<div class="lab-info"><span class="material-symbols-rounded" style="font-size:16px;">meeting_room</span> {lab_nome} {"· Prof. " + responsavel if responsavel else ""}</div>' if lab_nome else ''}
+            {f'<div class="lab-info"><span class="material-symbols-rounded" style="font-size:16px;">meeting_room</span> {lab_nome_html} {"· Prof. " + responsavel_html if responsavel_html else ""}</div>' if lab_nome else ''}
             {estado_html.get(estado, '')}
             <div class="resp-ok" id="resp-ok">
                 <span class="material-symbols-rounded check">task_alt</span>
@@ -411,7 +444,8 @@ def pagina_retirada(numero_patrimonio):
                     ok.querySelector('h2').innerText = 'Atenção';
                     document.getElementById('resp-msg').innerText = data.erro;
                 }} else {{
-                    document.getElementById('resp-msg').innerHTML = '<strong>' + nome + '</strong> vinculado ao ' + '{numero}' + '.<br>Bom trabalho!';
+                    const msg = document.getElementById('resp-msg');
+                    msg.textContent = nome + ' vinculado ao ' + '{numero}' + '. Bom trabalho!';
                 }}
             }} catch(err) {{
                 alert('Erro de conexão com o servidor.');
@@ -427,8 +461,13 @@ def pagina_retirada(numero_patrimonio):
 @app.route('/api/retirar/<numero_patrimonio>', methods=['POST'])
 def api_retirada_aluno(numero_patrimonio):
     numero = numero_patrimonio.strip().upper()
-    dados = request.json or {}
-    nome_usuario = dados.get('nome_usuario', '').strip()
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        return jsonify({"erro": "Envie os dados da retirada em formato JSON."}), 400
+    nome_recebido = dados.get('nome_usuario', '')
+    if not isinstance(nome_recebido, str):
+        return jsonify({"erro": "Informe um nome válido."}), 400
+    nome_usuario = nome_recebido.strip()
 
     # Validação do nome do aluno (mínimo 3 letras, máximo 80, não apenas espaços/números)
     if not nome_usuario or len(nome_usuario) < 3:
@@ -517,25 +556,89 @@ def api_retirada_aluno(numero_patrimonio):
 # ============================================================
 @app.route('/api/login', methods=['POST'])
 def login():
-    dados = request.json or {}
-    email = dados.get('email', '').strip().lower()
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        dados = {}
+    email_recebido = dados.get('email', '')
     senha = dados.get('senha', '')
+    if not isinstance(email_recebido, str) or not isinstance(senha, str):
+        return jsonify({"erro": "E-mail ou senha incorretos."}), 401
+    email = email_recebido.strip().lower()
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nome, tipo FROM usuarios WHERE LOWER(email)=? AND senha=?", (email, senha))
+    cursor.execute("SELECT id, nome, tipo, senha FROM usuarios WHERE LOWER(email)=?", (email,))
     u = cursor.fetchone()
+    if u:
+        stored_password = u['senha'] or ''
+        try:
+            valid_password = check_password_hash(stored_password, senha)
+        except (ValueError, TypeError):
+            valid_password = False
+        if not valid_password and hmac.compare_digest(stored_password, senha):
+            valid_password = True
+            cursor.execute("UPDATE usuarios SET senha=? WHERE id=?", (generate_password_hash(senha), u['id']))
+            conn.commit()
+    else:
+        valid_password = False
     conn.close()
 
-    if not u:
+    if not u or not valid_password:
         return jsonify({"erro": "E-mail ou senha incorretos."}), 401
 
+    session.clear()
+    session['usuario_id'] = u['id']
+    session['usuario_tipo'] = u['tipo']
+    session['usuario_nome'] = u['nome']
     return jsonify({"id": u['id'], "nome": u['nome'], "tipo": u['tipo']}), 200
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/api/secretaria/senha', methods=['POST'])
+@secretaria_required
+def alterar_senha_secretaria():
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        dados = {}
+    senha_atual = dados.get('senha_atual', '')
+    senha_nova = dados.get('senha_nova', '')
+    if not isinstance(senha_atual, str) or not isinstance(senha_nova, str) or len(senha_nova) < 12:
+        return jsonify({"erro": "A nova senha deve ter pelo menos 12 caracteres."}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT senha FROM usuarios WHERE id=? AND tipo='secretaria'", (session['usuario_id'],))
+    usuario = cursor.fetchone()
+    if not usuario:
+        conn.close()
+        return jsonify({"erro": "Conta da Secretaria não encontrada."}), 404
+
+    senha_armazenada = usuario['senha'] or ''
+    try:
+        senha_valida = check_password_hash(senha_armazenada, senha_atual)
+    except (ValueError, TypeError):
+        senha_valida = False
+    if not senha_valida:
+        senha_valida = hmac.compare_digest(senha_armazenada, senha_atual)
+    if not senha_valida:
+        conn.close()
+        return jsonify({"erro": "A senha atual está incorreta."}), 401
+
+    cursor.execute("UPDATE usuarios SET senha=? WHERE id=?", (generate_password_hash(senha_nova), session['usuario_id']))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok", "mensagem": "Senha atualizada."}), 200
 
 # ============================================================
 # STATS & DASHBOARD
 # ============================================================
 @app.route('/api/stats', methods=['GET'])
+@secretaria_required
 def stats():
     conn = get_db()
     cursor = conn.cursor()
@@ -572,14 +675,23 @@ def stats():
 # ============================================================
 @app.route('/api/rfid/leitura', methods=['POST'])
 def leitura_rfid():
-    dados = request.json or {}
-    tag_uid = dados.get('tag_uid', '').strip().upper()
-    lab_id = dados.get('lab_id', 1)
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        return jsonify({"status": "erro", "mensagem": "Envie uma leitura válida em JSON."}), 400
+    uid_recebido = dados.get('tag_uid', '')
+    if not isinstance(uid_recebido, str):
+        return jsonify({"status": "erro", "mensagem": "UID inválido."}), 400
+    tag_uid = uid_recebido.strip().upper()
+    try:
+        lab_id = int(dados.get('lab_id', 1))
+    except (TypeError, ValueError):
+        return jsonify({"status": "erro", "mensagem": "Laboratório inválido."}), 400
+    if lab_id < 1:
+        return jsonify({"status": "erro", "mensagem": "Laboratório inválido."}), 400
 
-    if not tag_uid:
-        return jsonify({"status": "erro", "mensagem": "UID não informado."}), 400
+    if not re.fullmatch(r"[A-F0-9]{4,32}", tag_uid):
+        return jsonify({"status": "erro", "mensagem": "UID inválido."}), 400
 
-    print(f"\n[RFID] Leitura recebida: UID={tag_uid} | Lab={lab_id}")
     conn = get_db()
     cursor = conn.cursor()
 
@@ -605,7 +717,6 @@ def leitura_rfid():
 
         conn.commit()
         conn.close()
-        print(f"--> Crachá desconhecido {tag_uid} salvo no banco para ativação.")
         return jsonify({
             "status": "pendente",
             "mensagem": "Cracha aguardando ativacao.",
@@ -657,7 +768,6 @@ def leitura_rfid():
 
         conn.commit()
         conn.close()
-        print(f"--> [ENCERRADO] Turno do Prof. {prof_nome} finalizado no {lab['nome']}.")
         return jsonify({
             "status": "sucesso",
             "acao": "encerrado",
@@ -679,7 +789,6 @@ def leitura_rfid():
 
         conn.commit()
         conn.close()
-        print(f"--> [INICIADO] Turno aberto pelo Prof. {prof_nome} no {lab['nome']}.")
         return jsonify({
             "status": "sucesso",
             "acao": "aberto",
@@ -692,6 +801,7 @@ def leitura_rfid():
 # CRACHÁS RECENTES & FILA DE ATIVAÇÃO
 # ============================================================
 @app.route('/api/crachas/fila', methods=['GET'])
+@secretaria_required
 def fila_crachas():
     conn = get_db()
     cursor = conn.cursor()
@@ -706,6 +816,7 @@ def fila_crachas():
     return jsonify(rows)
 
 @app.route('/api/crachas/leituras', methods=['GET'])
+@secretaria_required
 def leituras_recentes():
     conn = get_db()
     cursor = conn.cursor()
@@ -720,6 +831,7 @@ def leituras_recentes():
     return jsonify(rows)
 
 @app.route('/api/crachas/recentes', methods=['GET'])
+@secretaria_required
 def crachas_recentes():
     conn = get_db()
     cursor = conn.cursor()
@@ -734,6 +846,7 @@ def crachas_recentes():
     return jsonify(rows)
 
 @app.route('/api/crachas/recentes/<tag_uid>', methods=['DELETE'])
+@secretaria_required
 def ignorar_cracha(tag_uid):
     conn = get_db()
     cursor = conn.cursor()
@@ -746,6 +859,7 @@ def ignorar_cracha(tag_uid):
 # PROFESSORES (Pré-Cadastro & Ativação de Crachá)
 # ============================================================
 @app.route('/api/professores', methods=['GET'])
+@secretaria_required
 def listar_professores():
     conn = get_db()
     cursor = conn.cursor()
@@ -761,15 +875,25 @@ def listar_professores():
     return jsonify(rows)
 
 @app.route('/api/professores', methods=['POST'])
+@secretaria_required
 def cadastrar_professor():
-    dados = request.json or {}
-    nome = dados.get('nome', '').strip()
-    email = dados.get('email', '').strip().lower()
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        return jsonify({"erro": "Envie os dados do professor em formato JSON."}), 400
+    nome = dados.get('nome', '')
+    email = dados.get('email', '')
     senha = dados.get('senha', 'senai123')
-    tag_rfid = dados.get('tag_rfid', '').strip().upper() or None
+    tag_rfid = dados.get('tag_rfid', '')
+    if not all(isinstance(v, str) for v in (nome, email, senha, tag_rfid)):
+        return jsonify({"erro": "Os dados do professor são inválidos."}), 400
+    nome = nome.strip()
+    email = email.strip().lower()
+    tag_rfid = tag_rfid.strip().upper() or None
 
     if not nome or not email:
         return jsonify({"erro": "Nome e e-mail são obrigatórios."}), 400
+    if tag_rfid and not re.fullmatch(r"[A-F0-9]{4,32}", tag_rfid):
+        return jsonify({"erro": "UID do crachá inválido."}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -777,7 +901,7 @@ def cadastrar_professor():
         cursor.execute("""
             INSERT INTO usuarios (nome, email, senha, tipo, tag_rfid)
             VALUES (?, ?, ?, 'professor', ?)
-        """, (nome, email, senha, tag_rfid))
+        """, (nome, email, generate_password_hash(senha), tag_rfid))
         prof_id = cursor.lastrowid
 
         if tag_rfid:
@@ -791,12 +915,15 @@ def cadastrar_professor():
         return jsonify({"erro": "Este e-mail ou crachá já está cadastrado no sistema."}), 400
 
 @app.route('/api/professores/<int:prof_id>/vincular-cracha', methods=['POST'])
+@secretaria_required
 def vincular_cracha(prof_id):
-    dados = request.json or {}
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict) or not isinstance(dados.get('tag_uid', ''), str):
+        return jsonify({"erro": "UID do crachá inválido."}), 400
     tag_uid = dados.get('tag_uid', '').strip().upper()
 
-    if not tag_uid:
-        return jsonify({"erro": "Crachá UID obrigatório."}), 400
+    if not re.fullmatch(r"[A-F0-9]{4,32}", tag_uid):
+        return jsonify({"erro": "UID do crachá inválido."}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -822,6 +949,7 @@ def vincular_cracha(prof_id):
     return jsonify({"status": "ok", "mensagem": f"Crachá {tag_uid} vinculado ao professor {prof['nome']} com sucesso!"}), 200
 
 @app.route('/api/professores/<int:prof_id>/desvincular-cracha', methods=['POST'])
+@secretaria_required
 def desvincular_cracha(prof_id):
     conn = get_db()
     cursor = conn.cursor()
@@ -834,6 +962,7 @@ def desvincular_cracha(prof_id):
 # LABORATÓRIOS
 # ============================================================
 @app.route('/api/laboratorios', methods=['GET'])
+@login_required
 def listar_laboratorios():
     conn = get_db()
     cursor = conn.cursor()
@@ -862,7 +991,16 @@ def listar_laboratorios():
     return jsonify(labs)
 
 @app.route('/api/laboratorios/<int:lab_id>/encerrar', methods=['POST'])
+@login_required
 def encerrar_turno(lab_id):
+    if session.get('usuario_tipo') != 'secretaria':
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT responsavel_id FROM laboratorios WHERE id=?", (lab_id,))
+        lab = cursor.fetchone()
+        conn.close()
+        if not lab or lab['responsavel_id'] != session.get('usuario_id'):
+            return jsonify({"erro": "Você só pode encerrar seu próprio turno."}), 403
     conn = get_db()
     cursor = conn.cursor()
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -887,6 +1025,7 @@ def encerrar_turno(lab_id):
 # PATRIMÔNIOS (Cadastro e Listagem)
 # ============================================================
 @app.route('/api/patrimonios', methods=['GET'])
+@secretaria_required
 def listar_patrimonios():
     lab_id = request.args.get('lab_id')
     conn = get_db()
@@ -900,15 +1039,24 @@ def listar_patrimonios():
     return jsonify(items)
 
 @app.route('/api/patrimonios', methods=['POST'])
+@secretaria_required
 def cadastrar_patrimonio():
-    dados = request.json or {}
-    numero = dados.get('numero_patrimonio', '').strip().upper()
-    descricao = dados.get('descricao', '').strip()
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        return jsonify({"erro": "Envie os dados do patrimônio em formato JSON."}), 400
+    numero = dados.get('numero_patrimonio', '')
+    descricao = dados.get('descricao', '')
+    if not isinstance(numero, str) or not isinstance(descricao, str):
+        return jsonify({"erro": "Os dados do patrimônio são inválidos."}), 400
+    numero = numero.strip().upper()
+    descricao = descricao.strip()
     categoria = dados.get('categoria', 'computador')
     lab_id = dados.get('laboratorio_id')
 
     if not numero or not descricao:
         return jsonify({"erro": "Número de patrimônio e descrição são obrigatórios."}), 400
+    if not re.fullmatch(r"[A-Z0-9_-]{1,32}", numero):
+        return jsonify({"erro": "Use até 32 letras, números, hífen ou sublinhado no identificador."}), 400
 
     conn = get_db()
     cursor = conn.cursor()
@@ -929,9 +1077,16 @@ def cadastrar_patrimonio():
 # CAUTELAS & HISTÓRICO
 # ============================================================
 @app.route('/api/cautelas/<int:cautela_id>/devolver', methods=['POST'])
+@login_required
 def devolver_cautela(cautela_id):
     conn = get_db()
     cursor = conn.cursor()
+    if session.get('usuario_tipo') != 'secretaria':
+        cursor.execute("SELECT responsavel_id FROM cautelas WHERE id=?", (cautela_id,))
+        cautela = cursor.fetchone()
+        if not cautela or cautela['responsavel_id'] != session.get('usuario_id'):
+            conn.close()
+            return jsonify({"erro": "Você só pode devolver cautelas do seu laboratório."}), 403
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute("""
@@ -946,8 +1101,12 @@ def devolver_cautela(cautela_id):
     return jsonify({"status": "ok", "mensagem": "Patrimônio devolvido com sucesso."}), 200
 
 @app.route('/api/historico', methods=['GET'])
+@secretaria_required
 def historico():
-    limit = int(request.args.get('limit', 50))
+    try:
+        limit = max(1, min(int(request.args.get('limit', 50)), 500))
+    except ValueError:
+        return jsonify({"erro": "O limite do histórico deve ser um número inteiro."}), 400
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
@@ -971,7 +1130,7 @@ def historico():
 if __name__ == '__main__':
     init_db()
     # Ativa o modo debug apenas se a variável de ambiente FLASK_DEBUG=true estiver definida
-    # Em produção/demo, NUNCA deixar debug=True (expõe o console interativo do Flask)
+    # Em ambiente de uso, não deixar debug=True (expõe o console interativo do Flask).
     modo_debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     print("\n=========================================")
     print("  SENAI PATRIMONIO >> SERVIDOR ATIVO :5000")

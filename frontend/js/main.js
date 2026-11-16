@@ -1,9 +1,13 @@
 // ============================================================
 // CONFIGURAÇÃO GERAL
 // ============================================================
-const host = window.location.hostname || 'localhost';
-const PORTA = '5000';
-const API = `http://${host}:${PORTA}`;
+const API = window.location.origin;
+
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+}
 
 let usuarioId = null;
 let usuarioTipo = null;
@@ -63,6 +67,7 @@ function fazerLogin() {
         usuarioId = u.id;
         usuarioTipo = u.tipo;
         usuarioNome = u.nome;
+        document.getElementById('btn-alterar-senha').classList.toggle('hidden', u.tipo !== 'secretaria');
 
         document.getElementById('tela-login').classList.add('hidden');
         document.getElementById('tela-painel').classList.remove('hidden');
@@ -97,7 +102,10 @@ function fazerLogin() {
     });
 }
 
-function fazerLogout() {
+async function fazerLogout() {
+    try {
+        await fetch(`${API}/api/logout`, { method: 'POST' });
+    } catch (_) {}
     usuarioId = null;
     usuarioTipo = null;
     usuarioNome = null;
@@ -106,9 +114,30 @@ function fazerLogout() {
     document.getElementById('tela-login').classList.remove('hidden');
     document.getElementById('input-email').value = '';
     document.getElementById('input-senha').value = '';
+    document.getElementById('btn-alterar-senha').classList.add('hidden');
     document.getElementById('btn-login').innerHTML = 'ENTRAR NO SISTEMA';
     document.getElementById('btn-login').disabled = false;
     showToast('Sessão Encerrada', 'Você saiu do sistema com segurança.', 'sucesso');
+}
+
+async function alterarSenha() {
+    const senhaAtual = prompt('Informe sua senha atual:');
+    if (senhaAtual === null) return;
+    const senhaNova = prompt('Informe a nova senha (mínimo de 12 caracteres):');
+    if (senhaNova === null) return;
+
+    try {
+        const resposta = await fetch(`${API}/api/secretaria/senha`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ senha_atual: senhaAtual, senha_nova: senhaNova })
+        });
+        const dados = await resposta.json();
+        if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível alterar a senha.');
+        showToast('Senha atualizada', 'A senha da Secretaria foi alterada.', 'sucesso');
+    } catch (erro) {
+        showToast('Erro', erro.message, 'erro');
+    }
 }
 
 // ============================================================
@@ -145,16 +174,16 @@ function carregarProfessores() {
                 <tr class="hover:bg-slate-700/20 transition-colors">
                     <td class="px-6 py-4 font-bold text-white flex items-center gap-2.5">
                         <div class="h-7 w-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">
-                            ${p.nome.charAt(0).toUpperCase()}
+                            ${escapeHTML(p.nome.charAt(0).toUpperCase())}
                         </div>
-                        ${p.nome}
+                        ${escapeHTML(p.nome)}
                     </td>
-                    <td class="px-6 py-4 text-xs text-slate-400 font-mono">${p.email}</td>
+                    <td class="px-6 py-4 text-xs text-slate-400 font-mono">${escapeHTML(p.email)}</td>
                     <td class="px-6 py-4">
                         ${ativo ? `
                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-mono">
                                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-                                ${p.tag_rfid} (Ativo)
+                                ${escapeHTML(p.tag_rfid)} (Ativo)
                             </span>
                         ` : `
                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-950/60 text-amber-400 border border-amber-800/40">
@@ -169,13 +198,16 @@ function carregarProfessores() {
                                 Desvincular
                             </button>
                         ` : `
-                            <button onclick="abrirModalVincular(${p.id}, '${p.nome.replace(/'/g, "\\'")}')" class="text-xs bg-senai/90 hover:bg-senai text-white font-bold px-3 py-1.5 rounded-lg transition-colors">
+                            <button data-vincular-prof="${Number(p.id)}" data-prof-nome="${escapeHTML(p.nome)}" class="text-xs bg-senai/90 hover:bg-senai text-white font-bold px-3 py-1.5 rounded-lg transition-colors">
                                 Vincular Crachá
                             </button>
                         `}
                     </td>
                 </tr>`;
             }).join('');
+            tbody.querySelectorAll('[data-vincular-prof]').forEach(button => {
+                button.addEventListener('click', () => abrirModalVincular(button.dataset.vincularProf, button.dataset.profNome));
+            });
         })
         .catch(() => {});
 }
@@ -257,11 +289,11 @@ function carregarListaCrachasModal(profId) {
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-rounded text-senai text-lg">contactless</span>
                         <div>
-                            <p class="text-sm font-black text-white font-mono">${c.tag_uid}</p>
+                            <p class="text-sm font-black text-white font-mono">${escapeHTML(c.tag_uid)}</p>
                             <p class="text-[10px] text-slate-500">Lido às ${c.data_hora ? c.data_hora.substring(11,16) : '--'}</p>
                         </div>
                     </div>
-                    <button onclick="vincularCrachaConfirmado(${profId}, '${c.tag_uid}')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                    <button onclick="vincularCrachaConfirmado(${Number(profId)}, '${escapeHTML(c.tag_uid)}')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                         <span class="material-symbols-rounded text-sm">link</span> Vincular
                     </button>
                 </div>
@@ -344,15 +376,15 @@ function carregarFilaCrachas() {
                             <span class="material-symbols-rounded text-lg">contactless</span>
                         </div>
                         <div>
-                            <p class="text-sm font-black text-white font-mono tracking-wider">${c.tag_uid}</p>
+                            <p class="text-sm font-black text-white font-mono tracking-wider">${escapeHTML(c.tag_uid)}</p>
                             <p class="text-[10px] text-amber-400/80 font-medium">Lido às ${c.data_hora ? c.data_hora.substring(11, 19) : '--'}</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="ignorarCrachaFila('${c.tag_uid}')" class="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors" title="Ignorar este crachá">
+                        <button onclick="ignorarCrachaFila('${escapeHTML(c.tag_uid)}')" class="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors" title="Ignorar este crachá">
                             <span class="material-symbols-rounded text-base">close</span>
                         </button>
-                        <button onclick="abrirModalVincularParaUid('${c.tag_uid}')" class="bg-senai hover:bg-senai-hover text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors shadow">
+                        <button onclick="abrirModalVincularParaUid('${escapeHTML(c.tag_uid)}')" class="bg-senai hover:bg-senai-hover text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors shadow">
                             <span class="material-symbols-rounded text-sm">link</span> Vincular
                         </button>
                     </div>
@@ -418,7 +450,7 @@ function carregarLeiturasRecentes() {
                             ${statusTxt}
                         </span>
                         <span class="font-bold text-white font-mono">${l.tag_uid}</span>
-                        ${l.usuario_nome ? `<span class="text-slate-300 font-sans text-xs ml-1">· ${l.usuario_nome}</span>` : ''}
+                        ${l.usuario_nome ? `<span class="text-slate-300 font-sans text-xs ml-1">· ${escapeHTML(l.usuario_nome)}</span>` : ''}
                     </div>
                     <span class="text-[10px] text-slate-500 font-mono">${l.data_hora ? l.data_hora.substring(11, 19) : ''}</span>
                 </div>`;
@@ -454,8 +486,8 @@ function abrirModalVincularParaUid(tagUid) {
                     ${aguardando.map(p => `
                         <div class="flex items-center justify-between bg-slate-900 border border-slate-700 hover:border-senai rounded-xl p-3 transition-colors">
                             <div>
-                                <p class="text-xs font-bold text-white">${p.nome}</p>
-                                <p class="text-[10px] text-slate-400 font-mono">${p.email}</p>
+                                <p class="text-xs font-bold text-white">${escapeHTML(p.nome)}</p>
+                                <p class="text-[10px] text-slate-400 font-mono">${escapeHTML(p.email)}</p>
                             </div>
                             <button onclick="vincularCrachaConfirmado(${p.id}, '${tagUid}')" class="bg-senai hover:bg-senai-hover text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors">
                                 <span class="material-symbols-rounded text-sm">link</span> Atribuir
@@ -478,7 +510,7 @@ function carregarLabsSelect() {
         .then(labs => {
             const sel = document.getElementById('pat-lab');
             sel.innerHTML = '<option value="">Automático pelo Turno</option>' +
-                labs.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
+                labs.map(l => `<option value="${Number(l.id)}">${escapeHTML(l.nome)}</option>`).join('');
         })
         .catch(() => {});
 }
@@ -534,12 +566,12 @@ function carregarHistorico() {
             tbody.innerHTML = rows.map(r => `
                 <tr class="hover:bg-slate-700/20 transition-colors">
                     <td class="px-6 py-4">
-                        <span class="font-mono text-xs font-bold text-white bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg">${r.numero_patrimonio}</span>
-                        <span class="text-xs text-slate-400 ml-2">${r.descricao}</span>
+                        <span class="font-mono text-xs font-bold text-white bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg">${escapeHTML(r.numero_patrimonio)}</span>
+                        <span class="text-xs text-slate-400 ml-2">${escapeHTML(r.descricao)}</span>
                     </td>
-                    <td class="px-6 py-4 text-xs font-bold text-slate-200">${r.nome_usuario}</td>
-                    <td class="px-6 py-4 text-xs text-slate-400">${r.responsavel}</td>
-                    <td class="px-6 py-4 text-xs text-slate-400">${r.laboratorio}</td>
+                    <td class="px-6 py-4 text-xs font-bold text-slate-200">${escapeHTML(r.nome_usuario)}</td>
+                    <td class="px-6 py-4 text-xs text-slate-400">${escapeHTML(r.responsavel)}</td>
+                    <td class="px-6 py-4 text-xs text-slate-400">${escapeHTML(r.laboratorio)}</td>
                     <td class="px-6 py-4 text-xs text-slate-500 font-mono">${r.retirada_em ? r.retirada_em.substring(11,16) : '--'}</td>
                     <td class="px-6 py-4">
                         ${r.status === 'Ativa' ? `
@@ -569,8 +601,8 @@ function carregarLaboratorios() {
                 <div class="bg-slate-800 border ${emUso ? 'border-senai shadow-lg shadow-red-950/30' : 'border-slate-700'} rounded-2xl p-6 flex flex-col gap-4 transition-all">
                     <div class="flex items-start justify-between">
                         <div>
-                            <h3 class="font-bold text-white text-base">${lab.nome}</h3>
-                            <p class="text-xs text-slate-500 mt-0.5">${lab.localizacao || ''}</p>
+                            <h3 class="font-bold text-white text-base">${escapeHTML(lab.nome)}</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">${escapeHTML(lab.localizacao || '')}</p>
                         </div>
                         <span class="text-xs px-3 py-1 rounded-full font-black uppercase tracking-wider ${emUso ? 'bg-red-950/80 text-rose-400 border border-red-800/50' : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/50'}">
                             ${emUso ? 'Em Aula' : 'Livre'}
@@ -581,7 +613,7 @@ function carregarLaboratorios() {
                         <div class="bg-red-950/30 border border-red-800/30 rounded-xl px-4 py-3 flex items-center gap-3">
                             <span class="material-symbols-rounded text-senai text-xl">person</span>
                             <div>
-                                <p class="text-xs font-bold text-white">Resp: ${lab.responsavel_nome}</p>
+                                <p class="text-xs font-bold text-white">Resp: ${escapeHTML(lab.responsavel_nome)}</p>
                                 <p class="text-[10px] text-slate-400">Turno iniciado às ${lab.inicio_uso ? lab.inicio_uso.substring(11,16) : '--'}</p>
                             </div>
                         </div>
@@ -597,8 +629,8 @@ function carregarLaboratorios() {
                                     ${cautelas.map(c => `
                                         <div class="bg-slate-900/60 border border-slate-700/60 rounded-xl px-3 py-2 flex items-center justify-between">
                                             <div>
-                                                <p class="text-xs font-bold text-white">${c.nome_usuario}</p>
-                                                <p class="text-[10px] text-slate-400">${c.numero_patrimonio} · ${c.retirada_em ? c.retirada_em.substring(11,16) : ''}</p>
+                                                <p class="text-xs font-bold text-white">${escapeHTML(c.nome_usuario)}</p>
+                                                <p class="text-[10px] text-slate-400">${escapeHTML(c.numero_patrimonio)} · ${c.retirada_em ? c.retirada_em.substring(11,16) : ''}</p>
                                             </div>
                                             <button onclick="devolverCautelaManual(${c.id})" class="text-[10px] text-slate-400 hover:text-rose-400 transition-colors p-1" title="Liberar PC">
                                                 <span class="material-symbols-rounded text-base">close</span>

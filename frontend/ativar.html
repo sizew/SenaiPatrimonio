@@ -65,9 +65,14 @@
     </div>
 
     <script>
-        const host = window.location.hostname || 'localhost';
-        const API = `http://${host}:5000`;
+        const API = window.location.origin;
         let ultimoUid = null;
+
+        function escapeHTML(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[char]);
+        }
 
         async function carregarProfessores() {
             try {
@@ -79,7 +84,7 @@
                     return;
                 }
                 sel.innerHTML = '<option value="">Selecione seu nome...</option>' +
-                    profs.map(p => `<option value="${p.id}">${p.nome} (${p.status_cracha === 'Ativo' ? 'Crachá já Ativo' : 'Aguardando Ativação'})</option>`).join('');
+                    profs.map(p => `<option value="${Number(p.id)}">${escapeHTML(p.nome)} (${p.status_cracha === 'Ativo' ? 'Crachá já Ativo' : 'Aguardando Ativação'})</option>`).join('');
             } catch(e) {
                 console.error(e);
             }
@@ -136,7 +141,7 @@
                     msg.innerText = data.erro;
                 } else {
                     msg.classList.add('text-emerald-400');
-                    msg.innerHTML = '✅ ' + data.mensagem + '<br>Agora seu crachá já inicia e encerra turnos!';
+                    msg.textContent = data.mensagem + ' Agora seu crachá já inicia e encerra turnos!';
                     buscarUltimoCracha();
                     carregarProfessores();
                 }
