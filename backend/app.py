@@ -109,7 +109,8 @@ def init_db():
         )
     """)
 
-    # 5. Cautelas de uso (quem pegou qual patrimônio sob qual professor)
+    # 5. Registros de uso dos computadores por aluno durante o turno do professor.
+    # Os nomes da tabela/colunas são legados para manter compatibilidade com a base atual.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cautelas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,18 +135,10 @@ def init_db():
             VALUES (?, ?, ?, ?)
         """, ('Secretaria SENAI', 'secretaria@senai.br', generate_password_hash('senai123'), 'secretaria'))
 
-    # Seed inicial: Laboratórios padrão
+    # Seed inicial do piloto: uma sala de informática.
     cursor.execute("SELECT COUNT(*) as total FROM laboratorios")
     if cursor.fetchone()['total'] == 0:
-        labs = [
-            ('Lab. Informática 1', 'Bloco A - Sala 101'),
-            ('Lab. Informática 2', 'Bloco A - Sala 102'),
-            ('Lab. Redes',         'Bloco B - Sala 201'),
-            ('Lab. Hardware',      'Bloco B - Sala 202'),
-            ('Lab. Automação',     'Bloco C - Sala 301'),
-            ('Lab. Eletrônica',    'Bloco C - Sala 302'),
-            ('Lab. Maker / 3D',    'Bloco D - Sala 401'),
-        ]
+        labs = [('Sala de Informática', 'Sala de Informática')]
         cursor.executemany("INSERT INTO laboratorios (nome, localizacao) VALUES (?, ?)", labs)
 
     conn.commit()
@@ -170,10 +163,11 @@ def serve_etiquetas():
     return send_from_directory(app.static_folder, 'qr_generator.html')
 
 # ============================================================
-# AUTO-REGISTRO DO ALUNO VIA QR CODE NO PC
-# GET  /retirar/<PC-XX>  → Página mobile para o aluno informar nome
-# POST /api/retirar/<PC-XX> → Registra a cautela do PC
+# REGISTRO DE USO DO COMPUTADOR PELO ALUNO VIA QR CODE
+# GET  /uso/<PC-XX> → Página mobile para registrar quem está usando o PC
+# POST /api/retirar/<PC-XX> → Rota legada que registra o uso do PC
 # ============================================================
+@app.route('/uso/<numero_patrimonio>')
 @app.route('/retirar/<numero_patrimonio>')
 def pagina_retirada(numero_patrimonio):
     numero = numero_patrimonio.strip().upper()
@@ -244,7 +238,7 @@ def pagina_retirada(numero_patrimonio):
             <div class="status-box status-aviso">
                 <span class="material-symbols-rounded icon-lg">schedule</span>
                 <h2>Nenhum Turno Ativo</h2>
-                <p>O professor ainda não abriu a aula neste laboratório.<br>Aguarde o início do turno para usar o PC.</p>
+                <p>O professor ainda não iniciou o turno nesta sala.<br>Aguarde a abertura do turno para registrar o uso do computador.</p>
             </div>""",
         "ocupado": f"""
             <div class="status-box status-erro">
@@ -405,7 +399,7 @@ def pagina_retirada(numero_patrimonio):
             {estado_html.get(estado, '')}
             <div class="resp-ok" id="resp-ok">
                 <span class="material-symbols-rounded check">task_alt</span>
-                <h2>PC Vinculado!</h2>
+                <h2>Uso Registrado</h2>
                 <p id="resp-msg">Seu uso foi registrado com sucesso.<br>Pode fechar esta tela e utilizar o computador.</p>
             </div>
         </div>
@@ -445,7 +439,7 @@ def pagina_retirada(numero_patrimonio):
                     document.getElementById('resp-msg').innerText = data.erro;
                 }} else {{
                     const msg = document.getElementById('resp-msg');
-                    msg.textContent = nome + ' vinculado ao ' + '{numero}' + '. Bom trabalho!';
+                    msg.textContent = 'Uso de ' + '{numero}' + ' registrado para ' + nome + '. Bom trabalho!';
                 }}
             }} catch(err) {{
                 alert('Erro de conexão com o servidor.');
@@ -463,7 +457,7 @@ def api_retirada_aluno(numero_patrimonio):
     numero = numero_patrimonio.strip().upper()
     dados = request.get_json(silent=True)
     if not isinstance(dados, dict):
-        return jsonify({"erro": "Envie os dados da retirada em formato JSON."}), 400
+        return jsonify({"erro": "Envie os dados do registro de uso em formato JSON."}), 400
     nome_recebido = dados.get('nome_usuario', '')
     if not isinstance(nome_recebido, str):
         return jsonify({"erro": "Informe um nome válido."}), 400
@@ -539,7 +533,7 @@ def api_retirada_aluno(numero_patrimonio):
             "erro": f"Você ({nome_usuario}) já possui o computador {duplicado['numero_patrimonio']} em uso ativo no momento."
         }), 409
 
-    # 5. Registra cautela e atualiza status do patrimônio para 'Em Uso'
+    # 5. Registra quem está usando o computador e atualiza seu status para 'Em Uso'.
     cursor.execute("""
         INSERT INTO cautelas (patrimonio_id, nome_usuario, responsavel_id, laboratorio_id)
         VALUES (?, ?, ?, ?)
@@ -747,7 +741,7 @@ def leitura_rfid():
 
     # Toggle de Turno:
     if lab['status'] == 'Em Uso' and lab['responsavel_id'] == prof_id:
-        # Encerra o turno e devolve todos os patrimônios do laboratório
+        # Encerra o turno e finaliza os registros de uso do laboratório.
         cursor.execute("""
             UPDATE cautelas SET status='Devolvida', devolucao_em=?
             WHERE laboratorio_id=? AND status='Ativa'
@@ -1019,7 +1013,7 @@ def encerrar_turno(lab_id):
     """, (lab_id,))
     conn.commit()
     conn.close()
-    return jsonify({"status": "ok", "mensagem": "Turno encerrado e patrimônios liberados com sucesso."}), 200
+    return jsonify({"status": "ok", "mensagem": "Turno encerrado e registros de uso finalizados."}), 200
 
 # ============================================================
 # PATRIMÔNIOS (Cadastro e Listagem)
@@ -1086,7 +1080,7 @@ def devolver_cautela(cautela_id):
         cautela = cursor.fetchone()
         if not cautela or cautela['responsavel_id'] != session.get('usuario_id'):
             conn.close()
-            return jsonify({"erro": "Você só pode devolver cautelas do seu laboratório."}), 403
+            return jsonify({"erro": "Você só pode finalizar registros de uso do seu laboratório."}), 403
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute("""
@@ -1098,7 +1092,7 @@ def devolver_cautela(cautela_id):
     """, (cautela_id,))
     conn.commit()
     conn.close()
-    return jsonify({"status": "ok", "mensagem": "Patrimônio devolvido com sucesso."}), 200
+    return jsonify({"status": "ok", "mensagem": "Registro de uso finalizado; computador disponível."}), 200
 
 @app.route('/api/historico', methods=['GET'])
 @secretaria_required
