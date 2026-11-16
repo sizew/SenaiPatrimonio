@@ -103,7 +103,7 @@
                 </div>
             </div>
             <p class="text-center text-xs text-slate-500 mt-8 font-medium">
-                © SENAI-SP · Sistema de Controle de Patrimônio e Cautelas
+                © SENAI-SP · Sistema de Registro de Uso dos Computadores
             </p>
         </div>
     </div>
@@ -124,7 +124,7 @@
                     </div>
                     <div>
                         <span class="font-black text-white text-base tracking-tight">SENAI Patrimônio</span>
-                        <span class="text-[10px] text-slate-400 block -mt-1 font-semibold">Controle e Cautela</span>
+                        <span class="text-[10px] text-slate-400 block -mt-1 font-semibold">Uso dos Computadores</span>
                     </div>
                 </div>
 
@@ -157,7 +157,7 @@
                         <span class="material-symbols-rounded text-2xl">meeting_room</span>
                     </div>
                     <div>
-                        <p class="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Labs em Aula</p>
+                        <p class="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Sala em Aula</p>
                         <p id="stat-labs" class="text-2xl font-black text-white">--</p>
                     </div>
                 </div>
@@ -261,7 +261,7 @@
                             <span class="material-symbols-rounded text-xl">lan</span>
                         </div>
                         <div>
-                            <h3 class="font-bold text-white text-base">Salas & Laboratórios em Tempo Real</h3>
+                            <h3 class="font-bold text-white text-base">Sala de Informática em Tempo Real</h3>
                             <p class="text-xs text-slate-400 mt-0.5">Status da sala, docente responsável e alunos conectados nos computadores</p>
                         </div>
                     </div>
@@ -355,7 +355,7 @@
 
             </div>
 
-            <!-- HISTÓRICO COMPLETO DE CAUTELAS -->
+            <!-- HISTÓRICO DE USO DOS COMPUTADORES -->
             <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-sm">
                 <div class="px-6 py-5 border-b border-slate-700/80 flex items-center justify-between">
                     <div>
@@ -375,12 +375,13 @@
                                 <th class="px-6 py-3.5">Docente Responsável</th>
                                 <th class="px-6 py-3.5">Laboratório</th>
                                 <th class="px-6 py-3.5">Início do Uso</th>
+                                <th class="px-6 py-3.5">Fim do Uso</th>
                                 <th class="px-6 py-3.5">Status</th>
                             </tr>
                         </thead>
                         <tbody id="tabela-historico" class="divide-y divide-slate-700/50">
                             <tr>
-                                <td colspan="6" class="text-center text-slate-500 py-8 text-xs">Nenhum histórico disponível.</td>
+                                <td colspan="7" class="text-center text-slate-500 py-8 text-xs">Nenhum histórico disponível.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -398,7 +399,7 @@
                 <div>
                     <h2 id="prof-saudacao" class="text-2xl font-black text-white tracking-tight">Painel do Docente</h2>
                     <p class="text-xs text-slate-400 mt-1">
-                        Aproxime seu crachá RFID no leitor físico para abrir ou encerrar o turno do laboratório
+                        Aproxime seu crachá RFID no leitor para iniciar ou encerrar o turno da sala de informática
                     </p>
                 </div>
                 <div class="flex items-center gap-3">
@@ -412,7 +413,7 @@
 
             <!-- Grid de Laboratórios -->
             <div>
-                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Laboratórios Disponíveis</h3>
+                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Sala de Informática</h3>
                 <div id="grid-laboratorios" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <!-- Cards de labs dinâmicos inseridos via JS -->
                 </div>
